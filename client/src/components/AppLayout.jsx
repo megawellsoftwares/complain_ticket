@@ -39,7 +39,7 @@ export function AppLayout({ title, children }) {
       { to: "/admin/statistics", label: t("Statistics") },
     ],
     supervisor: [
-      { to: "/supervisor", label: t("Inbox") },
+      
       { to: "/supervisor/tracking", label: t("Tracking") },
       { to: "/supervisor/agents", label: t("Agents") },
       { to: "/requester", label: t("My requests") },

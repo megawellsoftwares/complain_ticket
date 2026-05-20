@@ -307,8 +307,8 @@ table.data tr:hover td {
   color: #ff453a;
 }
 .badge-reopened {
-  background: rgba(175, 82, 222, 0.18);
-  color: #dab4ff;
+  background: rgba(222, 189, 82, 0.137);
+ color: var(--warning);
 }
 .kanban-ticket-id {
   display: inline-block;

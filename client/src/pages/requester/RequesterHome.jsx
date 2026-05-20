@@ -4,12 +4,14 @@ import { api } from "../../api.js";
 import { AppLayout } from "../../components/AppLayout.jsx";
 import { KanbanBoard } from "../../components/KanbanBoard.jsx";
 import { normalizeStatusForRequester } from "../../components/ticketUtils.jsx";
+import { useAuth } from "../../auth/AuthContext.jsx";
 
-const REQUESTER_COLUMNS = ["received", "in-progress", "pending-confirmation", "fermer"];
+const REQUESTER_COLUMNS = ["received", "seen", "in-progress", "pending-confirmation", "fermer"];
 
 export default function RequesterHome() {
   const [tickets, setTickets] = useState([]);
   const [err, setErr] = useState("");
+  const { user } = useAuth();
 
   useEffect(() => {
     (async () => {
@@ -21,6 +23,35 @@ export default function RequesterHome() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:created", (t) => {
+        if (!mounted) return;
+        // only add if this requester created it
+        if (!user) return;
+        const requesterId = t.requester?._id || t.requester;
+        if (String(requesterId) === String(user._id)) setTickets((prev) => [t, ...(prev || [])]);
+      });
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        if (!user) return;
+        const requesterId = t.requester?._id || t.requester;
+        if (String(requesterId) !== String(user._id)) return;
+        setTickets((prev) => {
+          if (!prev) return [t];
+          const idx = prev.findIndex((x) => x._id === t._id);
+          if (idx === -1) return [t, ...prev];
+          const copy = [...prev];
+          copy[idx] = t;
+          return copy;
+        });
+      });
+    });
+    return () => { mounted = false; };
+  }, [user]);
 
   return (
     <AppLayout title="My tickets">

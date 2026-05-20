@@ -32,6 +32,18 @@ export default function SupervisorTicketPage() {
   }, [load, id]);
 
   useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        if (t._id === id) setTicket(t);
+      });
+    });
+    return () => { mounted = false; };
+  }, [id]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await api("/user/agents");
@@ -82,7 +94,7 @@ export default function SupervisorTicketPage() {
 
   const audioSrc = ticket?.voicePath ? assetUrl(ticket.voicePath) : "";
   const status = ticket?.status;
-  const canAssign = ticket && ["received", "seen-supervisor", "seen"].includes(status);
+  const canAssign = ticket && ["received", "seen-admin", "seen-supervisor"].includes(status);
   const isDispatched = ticket && ["dispatched", "seen-agent", "assigned"].includes(status);
   const assignedId = ticket?.assignedAgent?._id || ticket?.assignedAgent;
   const isSelfAssigned = assignedId && user?._id && assignedId.toString() === user._id.toString();

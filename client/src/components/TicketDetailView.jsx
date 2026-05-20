@@ -23,14 +23,14 @@ export function TicketDetailView({ ticket, audioSrc, children }) {
           <h2 style={{ margin: "0 0 0.25rem", fontSize: "1.15rem" }}>{ticket.subProblem?.problem?.name || t("Tickets")}</h2>
           <p className="muted" style={{ margin: 0 }}>
             {ticket.subProblem?.name || "—"} <br />
-            {ticket.subProblem?.problem?.tier ? (
-              <span className="muted"> {t("Tier")}: {ticket.subProblem.problem.tier}</span>
-            ) : null}
-            {ticket.isReopened ? <span className="reopen-tag"> · {t("Reopened (not new)")}</span> : null}
+           
           </p>
-          <TicketBadges ticket={ticket} />
+       
         </div>
+        <div  style={{ display: "flex"  ,gap: "0.5rem", flexWrap: "wrap" }}> 
+        <TicketBadges ticket={ticket} />
         <StatusBadge status={displayStatus} />
+        </div>
       </div>
       <div className="grid2">
         <div>

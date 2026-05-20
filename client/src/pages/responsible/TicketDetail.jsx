@@ -36,6 +36,18 @@ export default function ResponsibleTicketPage() {
   }, [load]);
 
   useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        if (t._id === id) setTicket(t);
+      });
+    });
+    return () => { mounted = false; };
+  }, [id]);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await api("/issue/all");

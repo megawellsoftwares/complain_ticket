@@ -23,6 +23,29 @@ export default function AdminTickets() {
     })();
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:created", (t) => {
+        if (!mounted) return;
+        setTickets((prev) => [t, ...(prev || [])]);
+      });
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        setTickets((prev) => {
+          if (!prev) return [t];
+          const idx = prev.findIndex((x) => x._id === t._id);
+          if (idx === -1) return [t, ...prev];
+          const copy = [...prev];
+          copy[idx] = t;
+          return copy;
+        });
+      });
+    });
+    return () => { mounted = false; };
+  }, []);
+
   return (
     <AppLayout title={title}>
       {readOnly ? <p className="muted">Super-admin: view-only access. No changes can be made from this account.</p> : null}

@@ -1,14 +1,16 @@
 export function statusBadgeClass(status) {
   const map = {
     received: "badge-received",
-    seen: "badge-seen",
+    "seen-admin": "badge-seen",
     "seen-supervisor": "badge-seen",
     assigned: "badge-assigned",
     dispatched: "badge-assigned",
     "seen-agent": "badge-assigned",
     "in-progress": "badge-in-progress",
     resolved: "badge-resolved",
+    solved: "badge-resolved",
     "pending-confirmation": "badge-resolved",
+    "pending-responsible": "badge-assigned",
     closed: "badge-closed",
     fermer: "badge-closed",
   };
@@ -18,9 +20,10 @@ export function statusBadgeClass(status) {
 /** Map legacy statuses to the new workflow for Kanban grouping */
 export function normalizeStatus(status) {
   const map = {
-    seen: "seen-supervisor",
+    "seen-admin": "seen-admin",
     assigned: "dispatched",
     resolved: "pending-confirmation",
+    solved: "pending-confirmation",
     closed: "fermer",
   };
   return map[status] || status;
@@ -29,12 +32,13 @@ export function normalizeStatus(status) {
 /** Simpler columns for requester-facing boards */
 export function normalizeStatusForRequester(status) {
   const map = {
-    seen: "received",
-    "seen-supervisor": "received",
-    assigned: "in-progress",
-    dispatched: "in-progress",
-    "seen-agent": "in-progress",
+    "seen-admin": "seen",
+    "seen-supervisor": "seen",
+    assigned: "seen",
+    dispatched: "seen",
+    "seen-agent": "seen",
     resolved: "pending-confirmation",
+    solved: "pending-confirmation",
     closed: "fermer",
   };
   return map[status] || status;

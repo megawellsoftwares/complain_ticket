@@ -179,7 +179,9 @@ export default function StatisticsPage() {
 function getStatusColor(status) {
   switch(status) {
     case "closed": return "#8e8e93";
-    case "resolved": return "var(--success)";
+    case "resolved":
+    case "solved":
+    case "pending-confirmation": return "var(--success)";
     case "in-progress": return "#3d8bfd";
     case "assigned": return "#af52de";
     case "seen": return "#5ac8fa";

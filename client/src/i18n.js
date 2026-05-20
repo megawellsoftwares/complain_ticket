@@ -74,6 +74,7 @@ const resources = {
       "Select a problem and sub-problem.": "Select a problem and sub-problem.",
       "Captured": "Captured",
       "re-record if needed.": "re-record if needed.",
+      "Duration": "Duration",
       "Notifications": "Notifications",
       "Alerts": "Alerts",
       "Mark all read": "Mark all read",
@@ -98,6 +99,7 @@ const resources = {
       "Canceled": "Canceled",
       "status": {
         "received": "received",
+        "seen-admin": "seen (admin)",
         "seen": "seen",
         "seen-supervisor": "seen (supervisor)",
         "assigned": "assigned",
@@ -204,6 +206,7 @@ const resources = {
       "Select a problem and sub-problem.": "Sélectionnez un problème et un sous-problème.",
       "Captured": "Capturé",
       "re-record if needed.": "ré-enregistrez si nécessaire.",
+      "Duration": "Durée",
       "Notifications": "Notifications",
       "Alerts": "Alertes",
       "Mark all read": "Tout marquer comme lu",
@@ -228,6 +231,7 @@ const resources = {
       "Canceled": "Annulé",
       "status": {
         "received": "reçu",
+        "seen-admin": "vu (admin)",
         "seen": "vu",
         "seen-supervisor": "vu (superviseur)",
         "assigned": "assigné",

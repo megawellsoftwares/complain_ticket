@@ -4,11 +4,13 @@ import { api } from "../../api.js";
 import { AppLayout } from "../../components/AppLayout.jsx";
 import { KanbanBoard } from "../../components/KanbanBoard.jsx";
 import { normalizeStatusForRequester } from "../../components/ticketUtils.jsx";
+import { useAuth } from "../../auth/AuthContext.jsx";
 
 const AGENT_COLUMNS = ["dispatched", "seen-agent", "in-progress", "pending-confirmation", "fermer"];
 const MY_TICKET_COLUMNS = ["pending-responsible", "received", "in-progress", "pending-confirmation", "fermer"];
 
 export default function AgentHome() {
+  const { user } = useAuth();
   const [assignedTickets, setAssignedTickets] = useState([]);
   const [myTickets, setMyTickets] = useState([]);
   const [activeTab, setActiveTab] = useState("assigned"); // 'assigned' or 'mine'
@@ -32,6 +34,47 @@ export default function AgentHome() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:created", (t) => {
+        if (!mounted) return;
+        // New ticket may affect 'myTickets' if requester is current user
+        if (user && String(t.requester?._id || t.requester) === String(user._id)) {
+          setMyTickets((prev) => [t, ...(prev || [])]);
+        }
+      });
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        // Update assigned tickets list if assignment matches
+        const assignedId = t.assignedAgent?._id || t.assignedAgent;
+        if (user && String(assignedId) === String(user._id)) {
+          setAssignedTickets((prev) => {
+            if (!prev) return [t];
+            const idx = prev.findIndex((x) => x._id === t._id);
+            if (idx === -1) return [t, ...prev];
+            const copy = [...prev];
+            copy[idx] = t;
+            return copy;
+          });
+        }
+        // Also update myTickets if requester matches
+        if (user && String(t.requester?._id || t.requester) === String(user._id)) {
+          setMyTickets((prev) => {
+            if (!prev) return [t];
+            const idx = prev.findIndex((x) => x._id === t._id);
+            if (idx === -1) return [t, ...prev];
+            const copy = [...prev];
+            copy[idx] = t;
+            return copy;
+          });
+        }
+      });
+    });
+    return () => { mounted = false; };
+  }, [user]);
 
   return (
     <AppLayout title="Agent Dashboard">

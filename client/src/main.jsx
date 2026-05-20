@@ -5,6 +5,7 @@ import { AuthProvider } from "./auth/AuthContext.jsx";
 import App from "./App.jsx";
 import "./index.css";
 import "./i18n";
+import { connectSocket } from "./socket.js";
 
 
 createRoot(document.getElementById("root")).render(
@@ -16,3 +17,12 @@ createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// connect socket after app mounts
+setTimeout(() => {
+  try {
+    connectSocket();
+  } catch (e) {
+    // ignore
+  }
+}, 1000);

@@ -125,7 +125,7 @@ export async function createTicket(req, res) {
 
     const voicePath = voiceRelativePath(req.file?.path);
     const priority = tier === "high" ? "high" : "low";
-    const initialStatus = "received";
+    const initialStatus = tier === "high" ? "pending-responsible" : "received";
 
     const ticket = await ticketModel.create({
       requester,
@@ -143,24 +143,53 @@ export async function createTicket(req, res) {
       toStatus: initialStatus,
     });
 
-    const supervisors = await userModel.find({
-      role: "supervisor",
-      department: problem.department,
-    });
-    await notifyUsers(
-      supervisors.map((s) => s._id),
-      {
-        title: "New ticket",
-        body: "A new ticket arrived in your department queue.",
-        ticketId: ticket._id,
-        type: "ticket_new",
-      },
-    );
+    if (initialStatus === "received") {
+      const supervisors = await userModel.find({
+        role: "supervisor",
+        department: problem.department,
+      });
+      await notifyUsers(
+        supervisors.map((s) => s._id),
+        {
+          title: "New ticket",
+          body: "A new ticket arrived in your department queue.",
+          ticketId: ticket._id,
+          type: "ticket_new",
+        },
+      );
+    } else if (initialStatus === "pending-responsible") {
+      const responsibles = await userModel.find({
+        role: "responsible",
+        department: requesterDepartment,
+      });
+      await notifyUsers(
+        responsibles.map((r) => r._id),
+        {
+          title: "New approval required",
+          body: "A new high-tier ticket requires your approval.",
+          ticketId: ticket._id,
+          type: "ticket_pending_approval",
+        },
+      );
+    }
 
     const populatedTicket = await getPopulatedTicket(ticket._id);
     const ticketObj = populatedTicket.toObject();
     ticketObj.status = initialStatus;
     ticketObj.servingDepartment = problem.department;
+
+    // Emit real-time event for new ticket
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        // notify department supervisors
+        if (problem?.department) io.to(`dept:${problem.department}`).emit("ticket:created", serializeTicket(ticketObj, req.user.role));
+        // notify requester specifically
+        io.to(`user:${requester}`).emit("ticket:created", serializeTicket(ticketObj, req.user.role));
+      }
+    } catch (e) {
+      console.error("Socket emit error on create:", e);
+    }
 
     res.status(StatusCodes.CREATED).json({
       success: true,
@@ -259,7 +288,7 @@ export async function getUnassignedTickets(req, res) {
       return t;
     }));
 
-    tickets = tickets.filter(t => ["received", "seen", "seen-supervisor"].includes(t.status) || t.needsSupervisorReassign);
+    tickets = tickets.filter(t => ["received", "seen-admin", "seen-supervisor"].includes(t.status) || t.needsSupervisorReassign);
 
     if (req.user.role === "supervisor") {
       const userDept = req.user.department?.toString();
@@ -383,7 +412,7 @@ export async function assignTicket(req, res) {
 
     const oldStatus = await getTicketStatus(ticket._id);
     const assignable =
-      ["received", "seen", "seen-supervisor", "assigned"].includes(oldStatus) || ticket.needsSupervisorReassign;
+      ["received", "seen-admin", "seen-supervisor", "assigned"].includes(oldStatus) || ticket.needsSupervisorReassign;
     if (!assignable) {
       return res.status(StatusCodes.BAD_REQUEST).json({
         success: false,
@@ -416,6 +445,18 @@ export async function assignTicket(req, res) {
     const ticketObj = populated.toObject();
     ticketObj.status = "dispatched";
     ticketObj.servingDepartment = ticketObj.subProblem?.problem?.department;
+
+    // Emit update to assigned agent and department
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        if (agentId) io.to(`user:${agentId}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+        const deptId = ticketObj.servingDepartment?._id || ticketObj.servingDepartment;
+        if (deptId) io.to(`dept:${deptId}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+      }
+    } catch (e) {
+      console.error("Socket emit error on assign:", e);
+    }
 
     res.status(StatusCodes.OK).json({
       success: true,
@@ -489,6 +530,20 @@ export async function updateTicketStatus(req, res) {
     ticketObj.status = incoming;
     ticketObj.servingDepartment = ticketObj.subProblem?.problem?.department;
 
+    // Emit update to requester, assigned agent, and department
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        if (ticket.requester) io.to(`user:${ticket.requester}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+        const assignedId = ticket.assignedAgent || ticketObj.assignedAgent?._id || ticketObj.assignedAgent;
+        if (assignedId) io.to(`user:${assignedId}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+        const deptId = ticketObj.servingDepartment?._id || ticketObj.servingDepartment;
+        if (deptId) io.to(`dept:${deptId}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+      }
+    } catch (e) {
+      console.error("Socket emit error on status update:", e);
+    }
+
     res.status(StatusCodes.OK).json({
       success: true,
       data: serializeTicket(ticketObj, req.user.role),
@@ -555,6 +610,20 @@ export async function agentCannotSolve(req, res) {
     ticketObj.status = "received";
     ticketObj.servingDepartment = ticketObj.subProblem?.problem?.department;
 
+    // Emit update to department and supervisors
+    try {
+      const io = req.app.get("io");
+      if (io) {
+        const deptId = ticketObj.servingDepartment?._id || ticketObj.servingDepartment;
+        if (deptId) io.to(`dept:${deptId}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+        // also notify assigned agent (if any) and requester
+        if (ticketObj.assignedAgent) io.to(`user:${ticketObj.assignedAgent}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+        if (ticketObj.requester) io.to(`user:${ticketObj.requester}`).emit("ticket:updated", serializeTicket(ticketObj, req.user.role));
+      }
+    } catch (e) {
+      console.error("Socket emit error on escalate:", e);
+    }
+
     res.status(StatusCodes.OK).json({
       success: true,
       data: serializeTicket(ticketObj, req.user.role),
@@ -617,20 +686,25 @@ export async function getTicketById(req, res) {
     }
 
     const currentStatus = await getTicketStatus(ticket._id);
-
     if (role === "supervisor" && currentStatus === "received") {
+      ticket.status = "seen-admin";
+      await ticket.save();
+
       await recordHistory({
         ticketId: ticket._id,
-        action: "seen",
+        action: "seen-supervisor",
         user: req.user._id,
         fromStatus: "received",
-        toStatus: "seen",
+        toStatus: "seen-admin",
       });
     }
 
     const refreshedStatus = await getTicketStatus(ticket._id);
     const isAssignedUser = agentIdStr === req.user._id.toString();
     if (isAssignedUser && refreshedStatus === "dispatched") {
+      ticket.status = "seen-agent";
+      await ticket.save();
+
       await recordHistory({
         ticketId: ticket._id,
         action: "seen-agent",
@@ -742,9 +816,7 @@ export async function respondToResolution(req, res) {
 
       ticket.isReopened = true;
       ticket.needsSupervisorReassign = false;
-      ticket.assignedAgent = undefined;
-      ticket.supervisor = undefined;
-      ticket.status = "received";
+      ticket.status = "dispatched";
       await ticket.save();
 
       await recordHistory({
@@ -752,7 +824,7 @@ export async function respondToResolution(req, res) {
         action: "reopened",
         user: requesterId,
         fromStatus: currentStatus,
-        toStatus: "received",
+        toStatus: "dispatched",
         voicePath,
         note: notes || "Requester reported same problem not solved",
       });
@@ -762,6 +834,17 @@ export async function respondToResolution(req, res) {
         populate: { path: "problem" },
       });
 
+      // Notify the assigned agent
+      if (ticket.assignedAgent) {
+        await notifyUsers([ticket.assignedAgent], {
+          title: "Ticket reopened",
+          body: "The requester reported the issue is not fully resolved. The ticket is back in your queue.",
+          ticketId: ticket._id,
+          type: "ticket_reopened",
+        });
+      }
+
+      // Notify department supervisors
       const supervisors = await userModel.find({
         role: "supervisor",
         department: ticket.subProblem?.problem?.department,
@@ -769,8 +852,8 @@ export async function respondToResolution(req, res) {
       await notifyUsers(
         supervisors.map((s) => s._id),
         {
-          title: "Requester needs more help",
-          body: "The requester reported the issue is not fully resolved. The ticket is back in your queue as received.",
+          title: "Ticket reopened",
+          body: "The requester reported the issue is not fully resolved. The ticket is back with the agent.",
           ticketId: ticket._id,
           type: "ticket_reopened",
         },
@@ -778,13 +861,13 @@ export async function respondToResolution(req, res) {
 
       const populated = await getPopulatedTicket(ticket._id);
       const ticketObj = populated.toObject();
-      ticketObj.status = "received";
+      ticketObj.status = "dispatched";
       ticketObj.servingDepartment = ticketObj.subProblem?.problem?.department;
 
       return res.status(StatusCodes.OK).json({
         success: true,
         data: serializeTicket(ticketObj, req.user.role),
-        message: "Ticket returned to the supervisor queue as received",
+        message: "Ticket returned to the agent queue as dispatched",
       });
     }
 
@@ -886,7 +969,7 @@ export async function supervisorStartTicket(req, res) {
     }
 
     const oldStatus = await getTicketStatus(ticket._id);
-    const canStart = ["received", "seen", "seen-supervisor"].includes(oldStatus);
+    const canStart = ["received", "seen-admin", "seen-supervisor"].includes(oldStatus);
     if (!canStart) {
       return res.status(StatusCodes.BAD_REQUEST).json({
         success: false,
@@ -923,6 +1006,276 @@ export async function supervisorStartTicket(req, res) {
     res.status(StatusCodes.BAD_REQUEST).json({
       success: false,
       message: "Error starting ticket",
+      error: error.message,
+    });
+  }
+}
+
+export async function getPendingResponsibleTickets(req, res) {
+  try {
+    const userDept = req.user.department?.toString();
+    if (!userDept) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: "Responsible user must belong to a department",
+      });
+    }
+
+    let tickets = await ticketModel
+      .find({ status: "pending-responsible" })
+      .populate({
+        path: "requester",
+        select: "userName email phone department",
+        populate: { path: "department", select: "name" }
+      })
+      .populate({
+        path: "subProblem",
+        select: "name problem",
+        populate: {
+          path: "problem",
+          select: "name tier department",
+          populate: { path: "department", select: "name" }
+        },
+      })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Filter to only tickets where the requester's department matches the responsible's department
+    tickets = tickets.filter(t => {
+      const reqDeptId = t.requester?.department?._id?.toString() || t.requester?.department?.toString();
+      return reqDeptId === userDept;
+    });
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      data: serializeTickets(tickets, req.user.role),
+    });
+  } catch (error) {
+    res.status(StatusCodes.BAD_REQUEST).json({
+      success: false,
+      message: "Error fetching pending approvals",
+      error: error.message,
+    });
+  }
+}
+
+export async function confirmResponsibleTicket(req, res) {
+  try {
+    const { id } = req.params;
+    const ticket = await ticketModel.findById(id).populate({
+      path: "subProblem",
+      populate: { path: "problem" }
+    }).populate("requester");
+
+    if (!ticket) {
+      return res.status(StatusCodes.NOT_FOUND).json({ success: false, message: "Ticket not found" });
+    }
+
+    if (ticket.status !== "pending-responsible") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ success: false, message: "Ticket is not pending approval" });
+    }
+
+    const requesterDept = ticket.requester?.department?.toString();
+    if (req.user.role !== "responsible" || requesterDept !== req.user.department?.toString()) {
+      if (req.user.role !== "admin") {
+        return res.status(StatusCodes.FORBIDDEN).json({ success: false, message: "Forbidden" });
+      }
+    }
+
+    const oldStatus = ticket.status;
+    ticket.status = "received";
+    await ticket.save();
+
+    await recordHistory({
+      ticketId: ticket._id,
+      action: "confirmed",
+      user: req.user._id,
+      fromStatus: oldStatus,
+      toStatus: "received",
+    });
+
+    const supervisors = await userModel.find({
+      role: "supervisor",
+      department: ticket.subProblem?.problem?.department,
+    });
+    await notifyUsers(
+      supervisors.map((s) => s._id),
+      {
+        title: "New ticket approved",
+        body: "A high-tier ticket has been approved and is now in your queue.",
+        ticketId: ticket._id,
+        type: "ticket_new",
+      },
+    );
+
+    const populated = await getPopulatedTicket(ticket._id);
+    const ticketObj = populated.toObject();
+    ticketObj.status = "received";
+    ticketObj.servingDepartment = ticketObj.subProblem?.problem?.department;
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      data: serializeTicket(ticketObj, req.user.role),
+      message: "Ticket confirmed successfully",
+    });
+  } catch (error) {
+    res.status(StatusCodes.BAD_REQUEST).json({
+      success: false,
+      message: "Error confirming ticket",
+      error: error.message,
+    });
+  }
+}
+
+export async function modifyResponsibleTicket(req, res) {
+  try {
+    const { id } = req.params;
+    const { subProblemId, notes } = req.body;
+    const voicePath = voiceRelativePath(req.file?.path);
+
+    const ticket = await ticketModel.findById(id).populate("requester");
+    if (!ticket) {
+      return res.status(StatusCodes.NOT_FOUND).json({ success: false, message: "Ticket not found" });
+    }
+
+    if (ticket.status !== "pending-responsible") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ success: false, message: "Ticket is not pending approval" });
+    }
+
+    const requesterDept = ticket.requester?.department?.toString();
+    if (req.user.role !== "responsible" || requesterDept !== req.user.department?.toString()) {
+      if (req.user.role !== "admin") {
+        return res.status(StatusCodes.FORBIDDEN).json({ success: false, message: "Forbidden" });
+      }
+    }
+
+    const oldStatus = ticket.status;
+
+    if (subProblemId) {
+      ticket.subProblem = subProblemId;
+    }
+    if (notes !== undefined) {
+      ticket.notes = notes;
+    }
+    if (voicePath) {
+      ticket.voicePath = voicePath;
+    }
+
+    ticket.status = "received";
+    await ticket.save();
+
+    await recordHistory({
+      ticketId: ticket._id,
+      action: "modified",
+      user: req.user._id,
+      fromStatus: oldStatus,
+      toStatus: "received",
+      note: notes || "Ticket modified by department responsible",
+      voicePath
+    });
+
+    const populated = await getPopulatedTicket(ticket._id);
+    const problemDeptId = populated.subProblem?.problem?.department?._id || populated.subProblem?.problem?.department;
+
+    // Notify requester
+    if (ticket.requester) {
+      await notifyUsers([ticket.requester._id], {
+        title: "Ticket modified by responsible",
+        body: "Your department responsible modified your ticket details.",
+        ticketId: ticket._id,
+        type: "ticket_modified",
+      });
+    }
+
+    // Notify department supervisors
+    const supervisors = await userModel.find({
+      role: "supervisor",
+      department: problemDeptId,
+    });
+    await notifyUsers(
+      supervisors.map((s) => s._id),
+      {
+        title: "New ticket approved (modified)",
+        body: "A high-tier ticket has been modified, approved, and is now in your queue.",
+        ticketId: ticket._id,
+        type: "ticket_new",
+      },
+    );
+
+    const ticketObj = populated.toObject();
+    ticketObj.status = "received";
+    ticketObj.servingDepartment = problemDeptId;
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      data: serializeTicket(ticketObj, req.user.role),
+      message: "Ticket modified and sent to supervisor",
+    });
+  } catch (error) {
+    res.status(StatusCodes.BAD_REQUEST).json({
+      success: false,
+      message: "Error modifying ticket",
+      error: error.message,
+    });
+  }
+}
+
+export async function cancelResponsibleTicket(req, res) {
+  try {
+    const { id } = req.params;
+    const ticket = await ticketModel.findById(id).populate("requester");
+    if (!ticket) {
+      return res.status(StatusCodes.NOT_FOUND).json({ success: false, message: "Ticket not found" });
+    }
+
+    if (ticket.status !== "pending-responsible") {
+      return res.status(StatusCodes.BAD_REQUEST).json({ success: false, message: "Ticket is not pending approval" });
+    }
+
+    const requesterDept = ticket.requester?.department?.toString();
+    if (req.user.role !== "responsible" || requesterDept !== req.user.department?.toString()) {
+      if (req.user.role !== "admin") {
+        return res.status(StatusCodes.FORBIDDEN).json({ success: false, message: "Forbidden" });
+      }
+    }
+
+    const oldStatus = ticket.status;
+    ticket.status = "fermer";
+    ticket.isCanceled = true;
+    await ticket.save();
+
+    await recordHistory({
+      ticketId: ticket._id,
+      action: "canceled",
+      user: req.user._id,
+      fromStatus: oldStatus,
+      toStatus: "fermer",
+      note: "Refused by department responsible",
+    });
+
+    if (ticket.requester) {
+      await notifyUsers([ticket.requester._id], {
+        title: "Ticket refused",
+        body: "Your department responsible has refused and canceled your ticket.",
+        ticketId: ticket._id,
+        type: "ticket_refused",
+      });
+    }
+
+    const populated = await getPopulatedTicket(ticket._id);
+    const ticketObj = populated.toObject();
+    ticketObj.status = "fermer";
+    ticketObj.servingDepartment = ticketObj.subProblem?.problem?.department;
+
+    res.status(StatusCodes.OK).json({
+      success: true,
+      data: serializeTicket(ticketObj, req.user.role),
+      message: "Ticket refused and canceled successfully",
+    });
+  } catch (error) {
+    res.status(StatusCodes.BAD_REQUEST).json({
+      success: false,
+      message: "Error canceling ticket",
       error: error.message,
     });
   }

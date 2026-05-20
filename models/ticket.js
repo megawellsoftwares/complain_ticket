@@ -40,8 +40,9 @@ const ticketSchema = new Schema(
     status: {
       type: String,
       enum: [
-        "received", "seen", "dispatched", "seen-agent", "in-progress", "solved", "closed",
+        "received", "seen-admin", "dispatched", "seen-agent", "in-progress", "solved", "closed",
         "assigned", "resolved", "seen-supervisor", "pending-confirmation", "fermer",
+        "pending-responsible",
       ],
     },
     isUpdated: {

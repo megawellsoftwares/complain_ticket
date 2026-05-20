@@ -61,19 +61,17 @@ export function KanbanBoard({
                       {t_item.ticketId ? (
                         <span className="kanban-ticket-id">{t_item.ticketId}</span>
                       ) : null}
+                      <br /> 
                       <strong className="kanban-card-title">{t_item.subProblem?.problem?.name || t("Ticket")}</strong>
                     </div>
-                    <StatusBadge status={ticketDisplayStatus(t_item, normalizeFn)} />
+                    <StatusBadge status={t_item.effectiveStatus ?? t_item.status ?? ""} />
                   </div>
+            {t_item.isReopened ? <span className="reopen-tag">   {t("Reopened")}</span> : null}
                
                   <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.72rem" }}>
                     {t_item.requester?.department?.name || "—"}
                   </p>
-                  {t_item.needsSupervisorReassign ? (
-                    <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.75rem" }}>
-                      {t("Awaiting supervisor reassignment")}
-                    </p>
-                  ) : null}
+             
                   <p className="muted" style={{ margin: "0.35rem 0 0", fontSize: "0.72rem" }}>
                     {formatDate(t_item.updatedAt || t_item.createdAt)}
                   </p>

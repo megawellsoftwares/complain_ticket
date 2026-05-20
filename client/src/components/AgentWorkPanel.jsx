@@ -15,7 +15,7 @@ export function AgentWorkPanel({ ticket, ticketId, onUpdated }) {
   const status = ticket?.status;
   const canStart = ["dispatched", "seen-agent", "assigned"].includes(status);
   const isInProgress = status === "in-progress";
-  const isAwaitingConfirm = ["pending-confirmation", "resolved"].includes(status);
+  const isAwaitingConfirm = ["pending-confirmation", "resolved", "solved"].includes(status);
 
   async function startWork() {
     setBusy("start");

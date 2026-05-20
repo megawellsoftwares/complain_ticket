@@ -25,6 +25,18 @@ export default function AgentTicketPage() {
     api(`/notification/ticket/${id}/read`, { method: "PATCH", body: {} }).catch(() => {});
   }, [load, id]);
 
+  useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        if (t._id === id) setTicket(t);
+      });
+    });
+    return () => { mounted = false; };
+  }, [id]);
+
   const audioSrc = ticket?.voicePath ? assetUrl(ticket.voicePath) : "";
 
   return (

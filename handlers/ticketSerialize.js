@@ -2,10 +2,8 @@
 export function mapTicketStatusForApi(status) {
   if (!status) return status;
   const m = {
-    "seen-supervisor": "seen",
     "pending-confirmation": "solved",
     fermer: "closed",
-    "pending-responsible": "received",
     resolved: "solved",
   };
   return m[status] || status;

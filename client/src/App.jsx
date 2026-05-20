@@ -200,7 +200,7 @@ export default function App() {
         path="/supervisor"
         element={
           <ProtectedRoute roles={["supervisor"]}>
-            <SupervisorHome />
+            <SupervisorTracking />
           </ProtectedRoute>
         }
       />
@@ -250,7 +250,7 @@ export default function App() {
         path="/admin"
         element={
           <ProtectedRoute roles={["admin"]}>
-            <AdminHome />
+            <AdminTickets />
           </ProtectedRoute>
         }
       />

@@ -60,9 +60,6 @@ export async function getSubProblemsByProblem(req, res) {
     if (!parent) {
       return res.status(StatusCodes.NOT_FOUND).json({ success: false, message: "Problem not found" });
     }
-    if (req.user.role === "requester" && (parent.tier || "low") === "high") {
-      return res.status(StatusCodes.FORBIDDEN).json({ success: false, message: "Forbidden" });
-    }
     const subProblems = await subProblemModel.find({ problem: problemId });
     res.status(StatusCodes.OK).json({ success: true, data: subProblems });
   } catch (error) {

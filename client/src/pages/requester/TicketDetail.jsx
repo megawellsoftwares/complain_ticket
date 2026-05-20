@@ -33,7 +33,19 @@ export default function RequesterTicketPage() {
     api(`/notification/ticket/${id}/read`, { method: "PATCH", body: {} }).catch(() => {});
   }, [load, id]);
 
-  const awaiting = ["pending-confirmation", "resolved"].includes(ticket?.status);
+  useEffect(() => {
+    let mounted = true;
+    import("../../socket.js").then(({ default: socket, connectSocket }) => {
+      connectSocket();
+      socket.on("ticket:updated", (t) => {
+        if (!mounted) return;
+        if (t._id === id) setTicket(t);
+      });
+    });
+    return () => { mounted = false; };
+  }, [id]);
+
+  const awaiting = ["pending-confirmation", "resolved", "solved"].includes(ticket?.status);
 
   async function respond({ confirmed, sameProblem }) {
     setBusy(true);

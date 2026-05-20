@@ -12,6 +12,10 @@ import {
   agentCannotSolve,
   acceptTicket,
   supervisorStartTicket,
+  getPendingResponsibleTickets,
+  confirmResponsibleTicket,
+  modifyResponsibleTicket,
+  cancelResponsibleTicket,
 } from "../handlers/ticket.js";
 import { checkAuth } from "../middlewares/auth.js";
 import { authorize } from "../middlewares/roles.js";
@@ -24,9 +28,14 @@ ticketRouter.use(checkAuth);
 ticketRouter.use(blockSuperadminMutation);
 
 ticketRouter.post("/accept", authorize("agent", "supervisor"), acceptTicket);
-ticketRouter.post("/agent-cannot-solve", authorize("agent"), uploadVoice.single("voice"), agentCannotSolve);
+ticketRouter.post("/agent-cannot-solve", authorize("agent", "supervisor"), uploadVoice.single("voice"), agentCannotSolve);
 ticketRouter.post("/", authorize("requester", "responsible", "admin", "agent", "supervisor"), uploadVoice.single("voice"), createTicket);
 ticketRouter.get("/my", authorize("requester", "responsible", "agent", "supervisor"), getMyTickets);
+
+ticketRouter.get("/pending-responsible", authorize("responsible", "admin"), getPendingResponsibleTickets);
+ticketRouter.patch("/responsible/:id/confirm", authorize("responsible", "admin"), confirmResponsibleTicket);
+ticketRouter.patch("/responsible/:id/modify", authorize("responsible", "admin"), uploadVoice.single("voice"), modifyResponsibleTicket);
+ticketRouter.patch("/responsible/:id/cancel", authorize("responsible", "admin"), cancelResponsibleTicket);
 
 ticketRouter.get("/assigned", authorize("agent"), getAgentTickets);
 
